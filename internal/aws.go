@@ -1,7 +1,8 @@
-package aws
+package internal
 
 import (
 	"context"
+	"sort"
 
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/ec2"
@@ -23,10 +24,11 @@ func newClient() (*Client, error) {
 }
 
 type Instance struct {
-	Name  string
-	ID    string
-	Type  string
-	State string
+	Name     string
+	ID       string
+	Type     string
+	State    string
+	Platform string
 }
 
 func ListInstances() ([]Instance, error) {
@@ -51,13 +53,21 @@ func ListInstances() ([]Instance, error) {
 				}
 			}
 
+			if inst.State.Name != "running" {
+				continue
+			}
+
 			instances = append(instances, Instance{
-				ID:    *inst.InstanceId,
-				Type:  string(inst.InstanceType),
-				State: string(inst.State.Name),
-				Name:  name,
+				ID:       *inst.InstanceId,
+				Type:     string(inst.InstanceType),
+				State:    string(inst.State.Name),
+				Name:     name,
+				Platform: string(*inst.PlatformDetails),
 			})
 		}
 	}
+
+	sort.Slice(instances, func(i, j int) bool { return instances[i].Name < instances[j].Name })
+
 	return instances, nil
 }
