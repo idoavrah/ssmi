@@ -23,6 +23,10 @@ var (
 	selectedEC2Name    string
 	selectEC2ID        string
 	selectedEC2Profile string
+	selectedUsername   string
+	pages              *tview.Pages
+	primaryScreen      *tview.Frame
+	modalScreen        *tview.Flex
 )
 
 func init() {
@@ -33,6 +37,8 @@ func init() {
 	historyEc2 = LoadHistoryList(historyFilename)
 	historyListPanel = tview.NewList()
 	currentTablePanel = tview.NewTable()
+	focusPanel = currentTablePanel
+	selectedUsername = ""
 }
 
 func exitApp() {
@@ -46,8 +52,16 @@ func runSSM() {
 	app.Stop()
 	addToHistory()
 
-	fmt.Printf("Starting session for instance %s (%s) using profile %s", selectedEC2Name, selectEC2ID, selectedEC2Profile)
-	cmd := exec.Command("aws", "ssm", "start-session", "--target", selectEC2ID, "--profile", selectedEC2Profile)
+	params := []string{"ssm", "start-session", "--target", selectEC2ID, "--profile", selectedEC2Profile}
+	if selectedUsername != "" {
+		params = append(params,
+			"--document-name", "AWS-StartInteractiveCommand", "--parameters",
+			fmt.Sprintf("command=\"sudo su - %s\"", selectedUsername))
+	}
+
+	fmt.Printf("\nInstance: %s@%s (%s)\nProfile:  %s\n", selectedUsername, selectedEC2Name, selectEC2ID, selectedEC2Profile)
+
+	cmd := exec.Command("aws", params...)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
@@ -87,7 +101,8 @@ func StartApplication() {
 
 	profile = os.Getenv("AWS_PROFILE")
 	if profile == "" {
-		profile = "No Profile"
+		fmt.Println("AWS_PROFILE is not set")
+		exitApp()
 	}
 
 	historyListPanel.SetBorder(true).SetTitle(" History ").SetBorderPadding(1, 1, 1, 1)
@@ -95,33 +110,70 @@ func StartApplication() {
 	refreshHistory()
 
 	currentTablePanel.SetBorders(false).SetSelectable(true, false).SetFixed(1, 0)
-	currentTablePanel.SetBorder(true).SetTitle(fmt.Sprintf(" Current Instances (%s) ", profile)).SetBorderPadding(1, 1, 1, 1)
+	currentTablePanel.SetBorder(true).SetTitle(fmt.Sprintf(" Current Instances (Profile: %s) ", profile)).SetBorderPadding(1, 1, 1, 1)
 	currentTablePanel.SetCell(0, 0, tview.NewTableCell("Name").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
 	currentTablePanel.SetCell(0, 1, tview.NewTableCell("ID").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
 	currentTablePanel.SetCell(0, 2, tview.NewTableCell("Platform").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
 	currentTablePanel.SetCell(0, 3, tview.NewTableCell("Type").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
 
-	currentEc2, _ = ListInstances()
-
-	for i, instance := range currentEc2 {
-		currentTablePanel.SetCell(i+1, 0, tview.NewTableCell(instance.Name))
-		currentTablePanel.SetCell(i+1, 1, tview.NewTableCell(instance.ID))
-		currentTablePanel.SetCell(i+1, 2, tview.NewTableCell(instance.Platform))
-		currentTablePanel.SetCell(i+1, 3, tview.NewTableCell(instance.Type))
+	var err error
+	currentEc2, err = ListInstances(profile)
+	if err != nil {
+		fmt.Println(err)
+		exitApp()
 	}
 
-	focusPanel = currentTablePanel
-	form := tview.NewFrame(tview.NewFlex().
+	var color tcell.Color
+	for i, instance := range currentEc2 {
+		if !instance.Supported {
+			color = tcell.ColorDarkGrey
+		} else {
+			color = tcell.ColorWhite
+		}
+		currentTablePanel.SetCell(i+1, 0, tview.NewTableCell(instance.Name).SetTextColor(color))
+		currentTablePanel.SetCell(i+1, 1, tview.NewTableCell(instance.ID).SetTextColor(color))
+		currentTablePanel.SetCell(i+1, 2, tview.NewTableCell(instance.Platform).SetTextColor(color))
+		currentTablePanel.SetCell(i+1, 3, tview.NewTableCell(instance.Type).SetTextColor(color))
+	}
+
+	primaryScreen = tview.NewFrame(tview.NewFlex().
 		AddItem(currentTablePanel, 0, 7, true).
 		AddItem(historyListPanel, 0, 3, false)).
-		AddText("Press Enter to SSM into instance, '0-9' to SSM into favorite, Tab to switch focus, Q/ESC to quit", false, tview.AlignCenter, tcell.ColorWhite)
+		AddText("Press Enter to SSM into instance, 0-9 to SSM into recent instance, Tab to switch focus, Q/ESC to quit", false, tview.AlignCenter, tcell.ColorWhite)
 
-	app.SetRoot(form, true)
+	userForm := tview.NewForm()
+	userForm.SetBorderPadding(1, 1, 1, 1)
+	userForm.SetBorder(true).SetTitle(" Select username to use ").SetTitleAlign(tview.AlignCenter)
+
+	inputField := userForm.AddInputField("username", "", 20, nil, nil)
+	inputField.SetCancelFunc(func() {
+		pages.HidePage("modal")
+		app.SetFocus(currentTablePanel)
+		focusPanel = currentTablePanel
+	})
+
+	modalScreen = tview.NewFlex().
+		AddItem(nil, 0, 1, false).
+		AddItem(tview.NewFlex().
+			SetDirection(tview.FlexRow).
+			AddItem(nil, 0, 2, false).
+			AddItem(userForm, 7, 1, true).
+			AddItem(nil, 0, 2, false), 0, 1, true).
+		AddItem(nil, 0, 1, false)
+
+	pages = tview.NewPages().
+		AddPage("primary", primaryScreen, true, true).
+		AddPage("modal", modalScreen, true, false)
+
+	app.SetRoot(pages, true)
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
-		if slices.Contains([]tcell.Key{tcell.KeyCtrlC, tcell.KeyEsc}, event.Key()) ||
-			slices.Contains([]rune{'q', 'Q'}, event.Rune()) {
+		page, _ := pages.GetFrontPage()
+		if event.Key() == tcell.KeyCtrlC || slices.Contains([]rune{'q', 'Q'}, event.Rune()) {
 			exitApp()
+		} else if event.Key() == tcell.KeyEnter && page == "modal" {
+			selectedUsername = userForm.GetFormItemByLabel("username").(*tview.InputField).GetText()
+			runSSM()
 		} else if event.Rune() >= '0' && event.Rune() <= '9' {
 			if int(event.Rune()-'0') < len(historyEc2.Items) {
 				selectedEC2Name = historyEc2.Items[event.Rune()-'0'].Name
@@ -139,7 +191,8 @@ func StartApplication() {
 		selectedEC2Name = currentEc2[row-1].Name
 		selectEC2ID = currentEc2[row-1].ID
 		selectedEC2Profile = profile
-		runSSM()
+		userForm.GetFormItemByLabel("username").(*tview.InputField).SetText("")
+		pages.ShowPage("modal")
 	})
 
 	historyListPanel.SetSelectedFunc(func(row int, _ string, _ string, _ rune) {

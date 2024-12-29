@@ -1,73 +1,74 @@
 package internal
 
 import (
-	"context"
+	"encoding/json"
+	"fmt"
+	"os/exec"
+	"slices"
 	"sort"
-
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/ec2"
 )
 
-type Client struct {
-	EC2 *ec2.Client
-}
-
-func newClient() (*Client, error) {
-	cfg, err := config.LoadDefaultConfig(context.TODO())
-	if err != nil {
-		return nil, err
-	}
-
-	return &Client{
-		EC2: ec2.NewFromConfig(cfg),
-	}, nil
-}
-
 type Instance struct {
-	Name     string
-	ID       string
-	Type     string
-	State    string
-	Platform string
+	ID        string `json:"instanceId"`
+	Name      string `json:"name"`
+	Type      string `json:"type"`
+	State     string `json:"state"`
+	Platform  string `json:"platform"`
+	Supported bool
 }
 
-func ListInstances() ([]Instance, error) {
-	c, err := newClient()
+var (
+	LIST_INSTANCES     = []string{"ec2", "describe-instances", "--query", "Reservations[].Instances[].{instanceId:InstanceId,name:Tags[?Key==`Name`].Value|[0],type:InstanceType,state:State.Name,platform:Platform}"}
+	LIST_SSM_INSTANCES = []string{"ssm", "describe-instance-information", "--query", "InstanceInformationList[].InstanceId"}
+)
+
+func ListInstances(profile string) ([]Instance, error) {
+
+	cmd := exec.Command("aws", LIST_INSTANCES...)
+	output, err := cmd.Output()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to execute command: %w", err)
 	}
 
-	resp, err := c.EC2.DescribeInstances(context.TODO(), &ec2.DescribeInstancesInput{})
-	if err != nil {
-		return nil, err
+	var ec2Instances []Instance
+	if err := json.Unmarshal(output, &ec2Instances); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w\noutput: %s", err, string(output))
 	}
 
-	var instances []Instance
-	for _, res := range resp.Reservations {
-		for _, inst := range res.Instances {
-			name := ""
-			for _, tag := range inst.Tags {
-				if *tag.Key == "Name" {
-					name = *tag.Value
-					break
-				}
-			}
+	cmd = exec.Command("aws", LIST_SSM_INSTANCES...)
+	output, err = cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("failed to execute command: %w", err)
+	}
 
-			if inst.State.Name != "running" {
-				continue
-			}
+	var ssmInstances []string
+	if err := json.Unmarshal(output, &ssmInstances); err != nil {
+		return nil, fmt.Errorf("failed to parse JSON: %w\noutput: %s", err, string(output))
+	}
 
-			instances = append(instances, Instance{
-				ID:       *inst.InstanceId,
-				Type:     string(inst.InstanceType),
-				State:    string(inst.State.Name),
-				Name:     name,
-				Platform: string(*inst.PlatformDetails),
-			})
+	var tableInstances []Instance
+	for _, inst := range ec2Instances {
+
+		if slices.Contains(ssmInstances, inst.ID) {
+			inst.Supported = true
+		} else {
+			inst.Supported = false
 		}
+		if inst.Platform == "" {
+			inst.Platform = "Linux"
+		}
+		tableInstances = append(tableInstances, inst)
 	}
 
-	sort.Slice(instances, func(i, j int) bool { return instances[i].Name < instances[j].Name })
+	sort.Slice(tableInstances, func(i, j int) bool {
 
-	return instances, nil
+		if tableInstances[i].Supported && !tableInstances[j].Supported {
+			return true
+		} else if !tableInstances[i].Supported && tableInstances[j].Supported {
+			return false
+		}
+		return tableInstances[i].Name < tableInstances[j].Name
+	})
+
+	return tableInstances, nil
 }
