@@ -1,0 +1,83 @@
+name: Release Go Binary
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            name: linux-amd64
+          - os: linux
+            arch: arm64
+            name: linux-arm64
+          - os: darwin
+            arch: amd64
+            name: mac-intel
+          - os: darwin
+            arch: arm64
+            name: mac-silicon
+          - os: windows
+            arch: amd64
+            name: windows-amd64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.21"
+          cache: true
+
+      - name: Build Binary
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+        run: |
+          # Strip the 'v' prefix from the tag name
+          VERSION=${GITHUB_REF#refs/tags/}
+
+          # Create binary name
+          BINARY_NAME=${{ github.event.repository.name }}
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            BINARY_NAME="${BINARY_NAME}.exe"
+          fi
+
+          # Build with version info
+          go build -v -ldflags="-X 'main.Version=${VERSION}'" -o "dist/${BINARY_NAME}"
+
+          # Create archive
+          cd dist
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            zip "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip" "$BINARY_NAME"
+          else
+            tar czf "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "$BINARY_NAME"
+          fi
+
+          # Generate SHA256 checksums
+          if [ "${{ matrix.os }}" = "windows" ]; then
+            sha256sum "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip" > "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip.sha256"
+          else
+            sha256sum "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
+          fi
+
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.sha256
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
