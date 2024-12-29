@@ -7,9 +7,10 @@ import (
 )
 
 type HistoryItem struct {
-	ID      string `json:"id"`
-	Name    string `json:"name"`
-	Profile string `json:"profile"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Username string `json:"username"`
+	Profile  string `json:"profile"`
 }
 
 type HistoryList struct {

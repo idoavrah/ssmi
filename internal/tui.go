@@ -72,16 +72,23 @@ func runSSM() {
 
 func refreshHistory() {
 	historyListPanel.Clear()
+	var name string
 	for idx, item := range historyEc2.Items {
-		historyListPanel.AddItem(fmt.Sprintf("%s (%s)", item.Name, item.ID), fmt.Sprintf("Profile: %s", item.Profile), '0'+rune(idx), nil)
+		if item.Name == "" {
+			name = item.ID
+		} else {
+			name = item.Name
+		}
+		historyListPanel.AddItem(fmt.Sprintf("Instance: %s@%s", item.Username, name), fmt.Sprintf("Profile:  %s", item.Profile), '0'+rune(idx), nil)
 	}
 }
 
 func addToHistory() {
 	historyEc2.Add(HistoryItem{
-		ID:      selectEC2ID,
-		Name:    selectedEC2Name,
-		Profile: selectedEC2Profile,
+		ID:       selectEC2ID,
+		Name:     selectedEC2Name,
+		Username: selectedUsername,
+		Profile:  selectedEC2Profile,
 	})
 	refreshHistory()
 }
@@ -176,9 +183,11 @@ func StartApplication() {
 			runSSM()
 		} else if event.Rune() >= '0' && event.Rune() <= '9' {
 			if int(event.Rune()-'0') < len(historyEc2.Items) {
-				selectedEC2Name = historyEc2.Items[event.Rune()-'0'].Name
-				selectEC2ID = historyEc2.Items[event.Rune()-'0'].ID
-				selectedEC2Profile = historyEc2.Items[event.Rune()-'0'].Profile
+				item := historyEc2.Items[event.Rune()-'0']
+				selectedEC2Name = item.Name
+				selectEC2ID = item.ID
+				selectedEC2Profile = item.Profile
+				selectedUsername = item.Username
 				runSSM()
 			}
 		} else if event.Key() == tcell.KeyTab {
