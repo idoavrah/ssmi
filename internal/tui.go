@@ -148,6 +148,11 @@ func StartApplication() {
 		fmt.Println(err)
 		exitApp()
 	}
+	if len(currentEc2) > 0 {
+		selectedEC2Name = currentEc2[0].Name
+		selectEC2ID = currentEc2[0].ID
+		selectedEC2Profile = profile
+	}
 
 	black := tcell.NewRGBColor(0x00, 0x00, 0x00)
 	style := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(black)
