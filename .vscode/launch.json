@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Launch SSMI",
+      "type": "go",
+      "request": "launch",
+      "mode": "debug",
+      "program": "ssmi.go",
+      "console": "integratedTerminal"
+    }
+  ]
+}
