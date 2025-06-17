@@ -15,11 +15,13 @@ var (
 	app                *tview.Application
 	currentEc2         []Instance
 	historyEc2         *HistoryList
+	favoritesEc2       *FavoritesArray
 	historyListPanel   *tview.List
+	favoritesListPanel *tview.List
 	currentTablePanel  *tview.Table
 	profile            string
 	historyFilename    string
-	focusPanel         any
+	favoritesFilename  string
 	selectedEC2Name    string
 	selectEC2ID        string
 	selectedEC2Profile string
@@ -27,30 +29,45 @@ var (
 	pages              *tview.Pages
 	primaryScreen      *tview.Frame
 	modalScreen        *tview.Flex
+	userForm           *tview.Form
+	shouldExecuteSSM   bool
+	favoriteKey        int
 )
 
 func init() {
 	homedir, _ := os.UserHomeDir()
-	historyFilename = filepath.Join(homedir, ".ssmi_history")
+	ssmiFolder := filepath.Join(homedir, ".ssmi")
+	err := os.Mkdir(ssmiFolder, 0755)
+	if err != nil {
+		if !os.IsExist(err) {
+			fmt.Println("Error creating .ssmi directory in home folder:", err)
+			os.Exit(1)
+		}
+	}
+
+	historyFilename = filepath.Join(ssmiFolder, "history.json")
+	favoritesFilename = filepath.Join(ssmiFolder, "favorites.json")
+
 	app = tview.NewApplication()
 	currentEc2 = []Instance{}
 	historyEc2 = LoadHistoryList(historyFilename)
+	favoritesEc2 = LoadFavoritesList(favoritesFilename)
 	historyListPanel = tview.NewList()
+	favoritesListPanel = tview.NewList()
 	currentTablePanel = tview.NewTable()
-	focusPanel = currentTablePanel
 	selectedUsername = ""
 }
 
 func exitApp() {
 	app.Stop()
 	historyEc2.Save(historyFilename)
+	favoritesEc2.Save(favoritesFilename)
 	os.Exit(0)
 }
 
 func runSSM() {
 
 	app.Stop()
-	addToHistory()
 
 	params := []string{"ssm", "start-session", "--target", selectEC2ID, "--profile", selectedEC2Profile}
 	if selectedUsername != "" {
@@ -66,8 +83,36 @@ func runSSM() {
 	cmd.Stderr = os.Stderr
 	cmd.Stdin = os.Stdin
 
-	cmd.Run()
+	if err := cmd.Run(); err == nil {
+		addToHistory()
+	}
+
 	exitApp()
+
+}
+
+func addToFavorites(position int) {
+	favoritesEc2.Add(FavoriteItem{
+		ID:       selectEC2ID,
+		Name:     selectedEC2Name,
+		Username: selectedUsername,
+		Profile:  selectedEC2Profile,
+	}, position)
+	favoritesEc2.Save(favoritesFilename)
+	refreshFavorites()
+}
+
+func refreshFavorites() {
+	favoritesListPanel.Clear()
+	for idx, item := range favoritesEc2.Items {
+
+		var primary, secondary string
+		if item.ID != "" {
+			primary = fmt.Sprintf("Instance: %s@%s (%s)", item.Username, item.Name, item.ID)
+			secondary = fmt.Sprintf("Profile:  %s", item.Profile)
+		}
+		favoritesListPanel.AddItem(primary, secondary, 'a'+rune(idx), nil)
+	}
 }
 
 func refreshHistory() {
@@ -79,7 +124,7 @@ func refreshHistory() {
 		} else {
 			name = item.Name
 		}
-		historyListPanel.AddItem(fmt.Sprintf("Instance: %s@%s", item.Username, name), fmt.Sprintf("Profile:  %s", item.Profile), '0'+rune(idx), nil)
+		historyListPanel.AddItem(fmt.Sprintf("Instance: %s@%s (%s)", item.Username, name, item.ID), fmt.Sprintf("Profile:  %s", item.Profile), '0'+rune(idx), nil)
 	}
 }
 
@@ -93,35 +138,19 @@ func addToHistory() {
 	refreshHistory()
 }
 
-func SwitchFocus() {
-	if focusPanel == historyListPanel {
-		app.SetFocus(currentTablePanel)
-		focusPanel = currentTablePanel
-	} else if focusPanel == currentTablePanel {
-		historyListPanel.SetCurrentItem(-1)
-		app.SetFocus(historyListPanel)
-		focusPanel = historyListPanel
-	}
+func showModal(executeSSM bool, favorite int) {
+	shouldExecuteSSM = executeSSM
+	favoriteKey = favorite
+	userForm.GetFormItemByLabel("username").(*tview.InputField).SetText("")
+	pages.ShowPage("modal")
 }
 
 func StartApplication() {
-
 	profile = os.Getenv("AWS_PROFILE")
 	if profile == "" {
 		fmt.Println("AWS_PROFILE is not set")
 		exitApp()
 	}
-
-	historyListPanel.SetBorder(true).SetTitle(" History ").SetBorderPadding(1, 1, 1, 1)
-	historyListPanel.SetSelectedFocusOnly(true).SetSecondaryTextColor(tcell.ColorDarkGrey)
-	refreshHistory()
-
-	currentTablePanel.SetBorders(false).SetSelectable(true, false).SetFixed(1, 0)
-	currentTablePanel.SetBorder(true).SetTitle(fmt.Sprintf(" Current Instances (Profile: %s) ", profile)).SetBorderPadding(1, 1, 1, 1)
-	currentTablePanel.SetCell(0, 0, tview.NewTableCell("Name").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
-	currentTablePanel.SetCell(0, 1, tview.NewTableCell("ID").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
-	currentTablePanel.SetCell(0, 2, tview.NewTableCell("Platform").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
-	currentTablePanel.SetCell(0, 3, tview.NewTableCell("Type").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
 
 	var err error
 	currentEc2, err = ListInstances(profile)
@@ -129,6 +158,42 @@ func StartApplication() {
 		fmt.Println(err)
 		exitApp()
 	}
+	if len(currentEc2) > 0 {
+		selectedEC2Name = currentEc2[0].Name
+		selectEC2ID = currentEc2[0].ID
+		selectedEC2Profile = profile
+	}
+
+	black := tcell.NewRGBColor(0x00, 0x00, 0x00)
+	style := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(black)
+
+	historyListPanel.SetBorder(true).SetTitle(" History ").SetBorderPadding(1, 1, 1, 1)
+	historyListPanel.SetSelectedFocusOnly(true)
+	historyListPanel.SetShortcutStyle(style)
+	historyListPanel.SetMainTextStyle(style)
+	historyListPanel.SetSecondaryTextStyle(style)
+	historyListPanel.SetMainTextColor(tcell.ColorWhite)
+	historyListPanel.SetBackgroundColor(black)
+
+	favoritesListPanel.SetBorder(true).SetTitle(" Favorites ").SetBorderPadding(1, 1, 1, 1)
+	favoritesListPanel.SetSelectedFocusOnly(true)
+	favoritesListPanel.SetShortcutStyle(style)
+	favoritesListPanel.SetMainTextStyle(style)
+	favoritesListPanel.SetSecondaryTextStyle(style)
+	favoritesListPanel.SetMainTextColor(tcell.ColorWhite)
+	favoritesListPanel.SetBackgroundColor(black)
+
+	quickPanel := tview.NewFlex().SetDirection(tview.FlexRow).
+		AddItem(favoritesListPanel, 0, 1, false).
+		AddItem(historyListPanel, 0, 1, false)
+
+	currentTablePanel.SetBorders(false).SetSelectable(true, false).SetFixed(1, 0)
+	currentTablePanel.SetBorder(true).SetTitle(fmt.Sprintf(" Current Instances (Profile: %s) ", profile)).SetBorderPadding(1, 1, 1, 1)
+	currentTablePanel.SetCell(0, 0, tview.NewTableCell("Name").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
+	currentTablePanel.SetCell(0, 1, tview.NewTableCell("ID").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
+	currentTablePanel.SetCell(0, 2, tview.NewTableCell("Platform").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
+	currentTablePanel.SetCell(0, 3, tview.NewTableCell("Type").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
+	currentTablePanel.SetBackgroundColor(black)
 
 	var color tcell.Color
 	for i, instance := range currentEc2 {
@@ -144,11 +209,13 @@ func StartApplication() {
 	}
 
 	primaryScreen = tview.NewFrame(tview.NewFlex().
-		AddItem(currentTablePanel, 0, 7, true).
-		AddItem(historyListPanel, 0, 3, false)).
-		AddText("Press Enter to SSM into instance, 0-9 to SSM into recent instance, Tab to switch focus, Q/ESC to quit", false, tview.AlignCenter, tcell.ColorWhite)
+		AddItem(currentTablePanel, 0, 6, true).
+		AddItem(quickPanel, 0, 4, true)).
+		AddText("Press Enter to SSM into an instance, 0-9 to log into a recent instance, a-j to log into favorite instance, A-J to save a new favorite, Q/ESC to quit", false, tview.AlignCenter, tcell.ColorWhite)
 
-	userForm := tview.NewForm()
+	primaryScreen.SetBackgroundColor(black)
+
+	userForm = tview.NewForm()
 	userForm.SetBorderPadding(1, 1, 1, 1)
 	userForm.SetBorder(true).SetTitle(" Select username to use ").SetTitleAlign(tview.AlignCenter)
 
@@ -156,7 +223,6 @@ func StartApplication() {
 	inputField.SetCancelFunc(func() {
 		pages.HidePage("modal")
 		app.SetFocus(currentTablePanel)
-		focusPanel = currentTablePanel
 	})
 
 	modalScreen = tview.NewFlex().
@@ -176,32 +242,56 @@ func StartApplication() {
 
 	app.SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
 		page, _ := pages.GetFrontPage()
-		if event.Key() == tcell.KeyCtrlC || slices.Contains([]rune{'q', 'Q'}, event.Rune()) {
-			exitApp()
-		} else if event.Key() == tcell.KeyEnter && page == "modal" {
+
+		if page == "modal" && event.Key() == tcell.KeyEnter {
 			selectedUsername = userForm.GetFormItemByLabel("username").(*tview.InputField).GetText()
-			runSSM()
-		} else if event.Rune() >= '0' && event.Rune() <= '9' {
-			if int(event.Rune()-'0') < len(historyEc2.Items) {
-				item := historyEc2.Items[event.Rune()-'0']
-				selectedEC2Name = item.Name
-				selectEC2ID = item.ID
-				selectedEC2Profile = item.Profile
-				selectedUsername = item.Username
+			pages.HidePage("modal")
+			if shouldExecuteSSM {
 				runSSM()
+			} else if favoriteKey >= 0 {
+				addToFavorites(favoriteKey)
 			}
-		} else if event.Key() == tcell.KeyTab {
-			SwitchFocus()
+			return nil
+		} else if page == "primary" {
+			pressedKey := event.Key()
+			pressedRune := event.Rune()
+			if pressedKey == tcell.KeyCtrlC || slices.Contains([]rune{'q', 'Q'}, pressedRune) {
+				exitApp()
+			} else if pressedRune >= 'A' && pressedRune <= 'J' {
+				showModal(false, int(pressedRune-'A'))
+				return nil
+			} else if pressedRune >= 'a' && pressedRune <= 'j' {
+				position := int(pressedRune - 'a')
+				item := favoritesEc2.Items[position]
+				if item.ID != "" {
+					selectedEC2Name = item.Name
+					selectEC2ID = item.ID
+					selectedEC2Profile = item.Profile
+					selectedUsername = item.Username
+					runSSM()
+				}
+			} else if pressedRune >= '0' && pressedRune <= '9' {
+				if int(pressedRune-'0') < len(historyEc2.Items) {
+					item := historyEc2.Items[pressedRune-'0']
+					selectedEC2Name = item.Name
+					selectEC2ID = item.ID
+					selectedEC2Profile = item.Profile
+					selectedUsername = item.Username
+					runSSM()
+				}
+			}
 		}
 		return event
 	})
 
-	currentTablePanel.SetSelectedFunc(func(row, column int) {
+	currentTablePanel.SetSelectionChangedFunc(func(row, column int) {
 		selectedEC2Name = currentEc2[row-1].Name
 		selectEC2ID = currentEc2[row-1].ID
 		selectedEC2Profile = profile
-		userForm.GetFormItemByLabel("username").(*tview.InputField).SetText("")
-		pages.ShowPage("modal")
+	})
+
+	currentTablePanel.SetSelectedFunc(func(row, column int) {
+		showModal(true, -1)
 	})
 
 	historyListPanel.SetSelectedFunc(func(row int, _ string, _ string, _ rune) {
@@ -210,6 +300,9 @@ func StartApplication() {
 		selectedEC2Profile = historyEc2.Items[row].Profile
 		runSSM()
 	})
+
+	refreshHistory()
+	refreshFavorites()
 
 	app.Run()
 }
