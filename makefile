@@ -1,5 +1,6 @@
 APP_NAME := ssmi
 DIST_DIR := dist
+VERSION := 1.0.0
 
 default:
 	@echo "Usage: make [target]"
@@ -16,7 +17,8 @@ clean:
 
 build:
 	mkdir -p $(DIST_DIR)
-	go build -o $(DIST_DIR)/$(APP_NAME)
+	go build -ldflags "-X main.version=$(VERSION)" -o $(DIST_DIR)/$(APP_NAME)
+	
 
 run: 
-	go run ssmi.go
+	go run ssmi.go $(ARGS)
