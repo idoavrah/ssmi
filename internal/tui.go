@@ -29,6 +29,9 @@ var (
 	pages              *tview.Pages
 	primaryScreen      *tview.Frame
 	modalScreen        *tview.Flex
+	userForm           *tview.Form
+	shouldExecuteSSM   bool
+	favoriteKey        int
 )
 
 func init() {
@@ -135,6 +138,13 @@ func addToHistory() {
 	refreshHistory()
 }
 
+func showModal(executeSSM bool, favorite int) {
+	shouldExecuteSSM = executeSSM
+	favoriteKey = favorite
+	userForm.GetFormItemByLabel("username").(*tview.InputField).SetText("")
+	pages.ShowPage("modal")
+}
+
 func StartApplication() {
 	profile = os.Getenv("AWS_PROFILE")
 	if profile == "" {
@@ -201,11 +211,11 @@ func StartApplication() {
 	primaryScreen = tview.NewFrame(tview.NewFlex().
 		AddItem(currentTablePanel, 0, 6, true).
 		AddItem(quickPanel, 0, 4, true)).
-		AddText("Press Enter to SSM into instance, 0-9 to log into recent instance, a-j to log into favorite instance, A-J to save new favorite, Q/ESC to quit", false, tview.AlignCenter, tcell.ColorWhite)
+		AddText("Press Enter to SSM into an instance, 0-9 to log into a recent instance, a-j to log into favorite instance, A-J to save a new favorite, Q/ESC to quit", false, tview.AlignCenter, tcell.ColorWhite)
 
 	primaryScreen.SetBackgroundColor(black)
 
-	userForm := tview.NewForm()
+	userForm = tview.NewForm()
 	userForm.SetBorderPadding(1, 1, 1, 1)
 	userForm.SetBorder(true).SetTitle(" Select username to use ").SetTitleAlign(tview.AlignCenter)
 
@@ -235,14 +245,20 @@ func StartApplication() {
 
 		if page == "modal" && event.Key() == tcell.KeyEnter {
 			selectedUsername = userForm.GetFormItemByLabel("username").(*tview.InputField).GetText()
-			runSSM()
+			pages.HidePage("modal")
+			if shouldExecuteSSM {
+				runSSM()
+			} else if favoriteKey >= 0 {
+				addToFavorites(favoriteKey)
+			}
+			return nil
 		} else if page == "primary" {
 			pressedKey := event.Key()
 			pressedRune := event.Rune()
 			if pressedKey == tcell.KeyCtrlC || slices.Contains([]rune{'q', 'Q'}, pressedRune) {
 				exitApp()
 			} else if pressedRune >= 'A' && pressedRune <= 'J' {
-				addToFavorites(int(pressedRune - 'A'))
+				showModal(false, int(pressedRune-'A'))
 				return nil
 			} else if pressedRune >= 'a' && pressedRune <= 'j' {
 				position := int(pressedRune - 'a')
@@ -275,8 +291,7 @@ func StartApplication() {
 	})
 
 	currentTablePanel.SetSelectedFunc(func(row, column int) {
-		userForm.GetFormItemByLabel("username").(*tview.InputField).SetText("")
-		pages.ShowPage("modal")
+		showModal(true, -1)
 	})
 
 	historyListPanel.SetSelectedFunc(func(row int, _ string, _ string, _ rune) {
