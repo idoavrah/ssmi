@@ -9,7 +9,7 @@
 
 ### Installation
 
-- Download the latest release from the [releases page](released).
+- Download the latest release from the [releases page](https://github.com/idoavrah/ssmi/releases/latest).
 - Install it using `brew install idoavrah/ssmi`.
 - Or, if you prefer to build it yourself, run `make build` and copy the binary to your PATH.
 
