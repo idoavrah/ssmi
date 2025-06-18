@@ -1,3 +1,11 @@
+<p align="center">
+  <img src="https://img.shields.io/github/downloads/idoavrah/ssmi/total" />
+  <img src="https://img.shields.io/github/v/release/idoavrah/ssmi" />
+  <img src="https://goreportcard.com/badge/github.com/idoavrah/ssmi" />
+  <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" />
+</p>
+
+
 ## SSMI (SSM Into) - Your SSM sidekick
 
 **SSMI** (pronounced "sesame", as in "open sesame") is a CLI tool that helps you log into supported EC2 instances with SSM. 

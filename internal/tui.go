@@ -145,25 +145,7 @@ func showModal(executeSSM bool, favorite int) {
 	pages.ShowPage("modal")
 }
 
-func StartApplication() {
-	profile = os.Getenv("AWS_PROFILE")
-	if profile == "" {
-		fmt.Println("AWS_PROFILE is not set")
-		exitApp()
-	}
-
-	var err error
-	currentEc2, err = ListInstances(profile)
-	if err != nil {
-		fmt.Println(err)
-		exitApp()
-	}
-	if len(currentEc2) > 0 {
-		selectedEC2Name = currentEc2[0].Name
-		selectEC2ID = currentEc2[0].ID
-		selectedEC2Profile = profile
-	}
-
+func buildScreen() {
 	black := tcell.NewRGBColor(0x00, 0x00, 0x00)
 	style := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(black)
 
@@ -194,7 +176,6 @@ func StartApplication() {
 	currentTablePanel.SetCell(0, 2, tview.NewTableCell("Platform").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
 	currentTablePanel.SetCell(0, 3, tview.NewTableCell("Type").SetAlign(tview.AlignCenter).SetSelectable(false).SetExpansion(1))
 	currentTablePanel.SetBackgroundColor(black)
-
 	var color tcell.Color
 	for i, instance := range currentEc2 {
 		if !instance.Supported {
@@ -307,6 +288,24 @@ func StartApplication() {
 		runSSM()
 	})
 
+}
+
+func StartApplication(currentProfile string) {
+	var err error
+
+	profile = currentProfile
+	currentEc2, err = ListInstances(profile)
+	if err != nil {
+		fmt.Println(err)
+		exitApp()
+	}
+	if len(currentEc2) > 0 {
+		selectedEC2Name = currentEc2[0].Name
+		selectEC2ID = currentEc2[0].ID
+		selectedEC2Profile = profile
+	}
+
+	buildScreen()
 	refreshHistory()
 	refreshFavorites()
 
