@@ -258,7 +258,9 @@ func StartApplication() {
 			if pressedKey == tcell.KeyCtrlC || slices.Contains([]rune{'q', 'Q'}, pressedRune) {
 				exitApp()
 			} else if pressedRune >= 'A' && pressedRune <= 'J' {
-				showModal(false, int(pressedRune-'A'))
+				if len(currentEc2) > 0 {
+					showModal(false, int(pressedRune-'A'))
+				}
 				return nil
 			} else if pressedRune >= 'a' && pressedRune <= 'j' {
 				position := int(pressedRune - 'a')
@@ -285,13 +287,17 @@ func StartApplication() {
 	})
 
 	currentTablePanel.SetSelectionChangedFunc(func(row, column int) {
-		selectedEC2Name = currentEc2[row-1].Name
-		selectEC2ID = currentEc2[row-1].ID
-		selectedEC2Profile = profile
+		if row > 0 && row <= len(currentEc2) {
+			selectedEC2Name = currentEc2[row-1].Name
+			selectEC2ID = currentEc2[row-1].ID
+			selectedEC2Profile = profile
+		}
 	})
 
 	currentTablePanel.SetSelectedFunc(func(row, column int) {
-		showModal(true, -1)
+		if row > 0 && row <= len(currentEc2) {
+			showModal(true, -1)
+		}
 	})
 
 	historyListPanel.SetSelectedFunc(func(row int, _ string, _ string, _ rune) {
