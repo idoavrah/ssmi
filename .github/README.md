@@ -1,7 +1,8 @@
 <p align="center">
-  <img src="https://img.shields.io/github/downloads/idoavrah/ssmi/total" />
   <img src="https://img.shields.io/github/v/release/idoavrah/ssmi" />
+  <img src="https://github.com/idoavrah/ssmi/actions/workflows/build-and-release.yaml/badge.svg" />
   <img src="https://goreportcard.com/badge/github.com/idoavrah/ssmi" />
+  <img src="https://img.shields.io/github/downloads/idoavrah/ssmi/total" />
   <img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" />
 </p>
 

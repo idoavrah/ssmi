@@ -92,37 +92,37 @@ jobs:
             shasum -a 256 "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
           fi
 
-      - name: Notarize macOS Binary
-        if: matrix.os == 'darwin'
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-        run: |
-          # Create temporary files for notarization
-          BINARY_NAME=${{ github.event.repository.name }}
-          VERSION=${GITHUB_REF#refs/tags/}
+      # - name: Notarize macOS Binary
+      #   if: matrix.os == 'darwin'
+      #   env:
+      #     APPLE_ID: ${{ secrets.APPLE_ID }}
+      #     APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      #     APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+      #   run: |
+      #     # Create temporary files for notarization
+      #     BINARY_NAME=${{ github.event.repository.name }}
+      #     VERSION=${GITHUB_REF#refs/tags/}
 
-          # Create a ZIP for notarization
-          cd dist
-          ditto -c -k --keepParent "$BINARY_NAME" "${BINARY_NAME}_notarize.zip"
+      #     # Create a ZIP for notarization
+      #     cd dist
+      #     ditto -c -k --keepParent "$BINARY_NAME" "${BINARY_NAME}_notarize.zip"
 
-          # Submit for notarization
-          xcrun notarytool submit "${BINARY_NAME}_notarize.zip" \
-            --apple-id "$APPLE_ID" \
-            --team-id "$APPLE_TEAM_ID" \
-            --password "$APPLE_PASSWORD" \
-            --wait
+      #     # Submit for notarization
+      #     xcrun notarytool submit "${BINARY_NAME}_notarize.zip" \
+      #       --apple-id "$APPLE_ID" \
+      #       --team-id "$APPLE_TEAM_ID" \
+      #       --password "$APPLE_PASSWORD" \
+      #       --wait
 
-          # Staple the notarization ticket
-          xcrun stapler staple "$BINARY_NAME"
+      #     # Staple the notarization ticket
+      #     xcrun stapler staple "$BINARY_NAME"
 
-          # Repackage the stapled binary
-          tar czf "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "$BINARY_NAME"
-          shasum -a 256 "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
+      #     # Repackage the stapled binary
+      #     tar czf "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "$BINARY_NAME"
+      #     shasum -a 256 "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
 
-          # Clean up
-          rm "${BINARY_NAME}_notarize.zip"
+      #     # Clean up
+      #     rm "${BINARY_NAME}_notarize.zip"
 
       - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
