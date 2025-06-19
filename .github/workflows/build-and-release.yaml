@@ -2,14 +2,18 @@ name: Release Go Binary
 
 on:
   release:
-    types: [published]
+    types:
+      - created
+      - published
+      - edited
+      - released
 
 permissions:
   contents: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
 
     strategy:
       matrix:
@@ -36,27 +40,48 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v4
         with:
-          go-version: "1.21"
+          go-version: "1.24"
           cache: true
+
+      - name: Import Code-Signing Certificates
+        if: matrix.os == 'darwin'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE_BASE64 }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          # Create keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+
+          # Import certificate
+          echo "$APPLE_CERTIFICATE" | base64 --decode > certificate.p12
+          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
+
+          # Clean up
+          rm certificate.p12
 
       - name: Build Binary
         env:
           GOOS: ${{ matrix.os }}
           GOARCH: ${{ matrix.arch }}
         run: |
-          # Strip the 'v' prefix from the tag name
           VERSION=${GITHUB_REF#refs/tags/}
-
-          # Create binary name
           BINARY_NAME=${{ github.event.repository.name }}
           if [ "${{ matrix.os }}" = "windows" ]; then
             BINARY_NAME="${BINARY_NAME}.exe"
           fi
 
-          # Build with version info
-          go build -v -ldflags="-X 'main.Version=${VERSION}'" -o "dist/${BINARY_NAME}"
+          go build -v -ldflags="-X 'main.version=${VERSION}'" -o "dist/${BINARY_NAME}"
 
-          # Create archive
+          # Sign macOS binaries
+          if [ "${{ matrix.os }}" = "darwin" ]; then
+            codesign --force --timestamp --sign "Developer ID Application" --options runtime "dist/${BINARY_NAME}"
+          fi
+
           cd dist
           if [ "${{ matrix.os }}" = "windows" ]; then
             zip "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip" "$BINARY_NAME"
@@ -64,15 +89,46 @@ jobs:
             tar czf "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "$BINARY_NAME"
           fi
 
-          # Generate SHA256 checksums
           if [ "${{ matrix.os }}" = "windows" ]; then
             sha256sum "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip" > "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip.sha256"
           else
             sha256sum "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
           fi
 
+      - name: Notarize macOS Binary
+        if: matrix.os == 'darwin'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: |
+          # Create temporary files for notarization
+          BINARY_NAME=${{ github.event.repository.name }}
+          VERSION=${GITHUB_REF#refs/tags/}
+
+          # Create a ZIP for notarization
+          cd dist
+          ditto -c -k --keepParent "$BINARY_NAME" "${BINARY_NAME}_notarize.zip"
+
+          # Submit for notarization
+          xcrun notarytool submit "${BINARY_NAME}_notarize.zip" \
+            --apple-id "$APPLE_ID" \
+            --team-id "$APPLE_TEAM_ID" \
+            --password "$APPLE_PASSWORD" \
+            --wait
+
+          # Staple the notarization ticket
+          xcrun stapler staple "$BINARY_NAME"
+
+          # Repackage the stapled binary
+          tar czf "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "$BINARY_NAME"
+          sha256sum "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
+
+          # Clean up
+          rm "${BINARY_NAME}_notarize.zip"
+
       - name: Upload Release Assets
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/*.zip
