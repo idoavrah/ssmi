@@ -3,9 +3,6 @@ name: Release Go Binary
 on:
   release:
     types:
-      - created
-      - published
-      - edited
       - released
 
 permissions:
