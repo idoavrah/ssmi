@@ -92,6 +92,17 @@ jobs:
             shasum -a 256 "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
           fi
 
+      - name: Upload Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/*.sha256
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Notarize macOS Binary
         if: matrix.os == 'darwin'
         env:
@@ -114,23 +125,5 @@ jobs:
             --password "$APPLE_PASSWORD" \
             --wait
 
-          # Staple the notarization ticket
-          xcrun stapler staple "$BINARY_NAME"
-
-          # Repackage the stapled binary
-          tar czf "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "$BINARY_NAME"
-          shasum -a 256 "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" > "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz.sha256"
-
           # Clean up
           rm "${BINARY_NAME}_notarize.zip"
-
-      - name: Upload Release Assets
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            dist/*.zip
-            dist/*.tar.gz
-            dist/*.sha256
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
