@@ -18,6 +18,7 @@ func main() {
 	versionFlag := flag.Bool("version", false, "Print the version")
 	helpFlag := flag.Bool("help", false, "Show help message")
 	offlineFlag := flag.Bool("offline", false, "Run in offline mode (no telemetry)")
+	profile := flag.String("profile", os.Getenv("AWS_PROFILE"), "AWS profile to use (can also be set via AWS_PROFILE environment variable)")
 
 	flag.Parse()
 
@@ -47,11 +48,11 @@ func main() {
 				Set("platform", runtime.GOOS+"-"+runtime.GOARCH)})
 	}
 
-	profile := os.Getenv("AWS_PROFILE")
-	if profile == "" {
-		fmt.Println("AWS_PROFILE is not set")
+	if *profile == "" {
+		fmt.Println("profile is not set, please set the AWS_PROFILE environment variable or use the --profile flag")
 		os.Exit(1)
 	}
 
-	internal.StartApplication(profile)
+	os.Setenv("AWS_PROFILE", *profile)
+	internal.StartApplication(*profile)
 }

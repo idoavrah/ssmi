@@ -18,18 +18,31 @@
 
 **SSMI** (pronounced "sesame", as in "open sesame") is a CLI tool that helps you log into supported EC2 instances with SSM.
 
+### ✨ Features
+
 - SSMI supports multiple AWS profiles.
 - SSMI saves your connection history for easy access.
 - SSMI allows connecting using different user accounts.
 
 > **_NOTE:_** If you are using [granted.dev](https://granted.dev), please read [this](https://docs.commonfate.io/granted/recipes/credential-process). If you don't, you really should, it's amazing.
 
-### Installation
+### 🚀 Usage
 
-- Download the latest release from the [releases page](https://github.com/idoavrah/ssmi/releases/latest).
+| Option                 | Description                                                                 |
+|------------------------|-----------------------------------------------------------------------------|
+| `--profile [profile]`  | Specify the AWS profile to use, otherwise AWS_PROFILE env var will be used  |
+| `--offline`            | Run in offline mode, no telemetry will be sent.                             |
+| `--version`            | Show version information and exit.                                          |
+| `--help`               | Show help message and exit.                                                 |
+
+### 💾 Installation
+
 - Install it using `brew install idoavrah/ssmi`.
-- Or, if you prefer to build it yourself, run `make build` and copy the binary to your PATH.
+- Or, download the latest release from the [releases page](https://github.com/idoavrah/ssmi/releases/latest).
+- Or, if you prefer to build it yourself, clone the repo, execute `make build` locally and copy the binary to your PATH.
 
-### Screenshot
+### 
+
+### 📺 Screenshot
 
 ![ssmi-screenshot](screenshot.png)

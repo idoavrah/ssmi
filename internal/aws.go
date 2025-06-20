@@ -1,11 +1,14 @@
 package internal
 
 import (
+	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"slices"
 	"sort"
+	"strings"
 )
 
 type Instance struct {
@@ -24,22 +27,43 @@ var (
 
 func ListInstances(profile string) ([]Instance, error) {
 
+	var outBuf, errBuf bytes.Buffer
+	var output []byte
+
 	cmd := exec.Command("aws", LIST_INSTANCES...)
-	output, err := cmd.Output()
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	err := cmd.Run()
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute command: %w", err)
+		errMsg := strings.TrimSpace(errBuf.String())
+		return nil, fmt.Errorf("failed to execute command: %s", errMsg)
+	} else {
+		output = outBuf.Bytes()
 	}
+	outBuf.Reset()
+	errBuf.Reset()
 
 	var ec2Instances []Instance
 	if err := json.Unmarshal(output, &ec2Instances); err != nil {
-		return nil, fmt.Errorf("failed to parse JSON: %w\noutput: %s", err, string(output))
+		errMsg := strings.TrimSpace(errBuf.String())
+		return nil, errors.New(errMsg)
 	}
 
 	cmd = exec.Command("aws", LIST_SSM_INSTANCES...)
-	output, err = cmd.Output()
+	cmd.Stdout = &outBuf
+	cmd.Stderr = &errBuf
+
+	err = cmd.Run()
 	if err != nil {
-		return nil, fmt.Errorf("failed to execute command: %w", err)
+		errMsg := strings.TrimSpace(errBuf.String())
+		return nil, errors.New(errMsg)
+	} else {
+		output = outBuf.Bytes()
 	}
+	outBuf.Reset()
+	errBuf.Reset()
 
 	var ssmInstances []string
 	if err := json.Unmarshal(output, &ssmInstances); err != nil {
