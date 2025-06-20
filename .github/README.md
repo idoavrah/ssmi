@@ -46,3 +46,9 @@
 ### 📺 Screenshot
 
 ![ssmi-screenshot](screenshot.png)
+
+### Usage Tracking
+- SSMI utilizes [PostHog](https://posthog.com) to track usage of the application.
+- This is done to help us understand if the tool is being used and possibly understand how it can be improved.
+- No personal data is being sent to the tracking service.
+- You can opt-out of usage tracking completely by setting the --offline flag when running the tool.
