@@ -82,8 +82,10 @@ jobs:
           cd dist
           if [ "${{ matrix.os }}" = "windows" ]; then
             zip "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip" "$BINARY_NAME"
+            copy "${BINARY_NAME%.*}-${VERSION}-${{ matrix.name }}.zip" "${BINARY_NAME%.*}-${{ matrix.name }}.zip"
           else
             tar czf "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "$BINARY_NAME"
+            cp "${BINARY_NAME}-${VERSION}-${{ matrix.name }}.tar.gz" "${BINARY_NAME}-${{ matrix.name }}.tar.gz"
           fi
 
           if [ "${{ matrix.os }}" = "windows" ]; then
